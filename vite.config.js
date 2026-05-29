@@ -2,7 +2,7 @@ import { defineConfig } from 'vite'
 import vue from '@vitejs/plugin-vue'
 
 export default defineConfig({
-  base: './',
+  base: '/tectonic_setting_discrimination_front_V2/',
   plugins: [vue()],
   server: {
     host: '127.0.0.1',
