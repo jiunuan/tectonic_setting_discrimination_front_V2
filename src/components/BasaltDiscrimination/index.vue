@@ -13,7 +13,6 @@
         </div>
         <div class="brand-text">
           <strong>{{ t('header.brandTitle') }}</strong>
-          <span>{{ t('header.brandSubtitle') }}</span>
         </div>
       </div>
 
@@ -1287,7 +1286,7 @@ onMounted(() => {
 .brand-text strong {
   overflow: hidden;
   color: #fff;
-  font-size: 30px;
+  font-size: 20px;
   font-weight: 700;
   line-height: 1.05;
   text-overflow: ellipsis;
