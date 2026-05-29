@@ -64,7 +64,11 @@
         :label="col"
         width="150"
         show-overflow-tooltip
-      />
+      >
+        <template #header>
+          <span class="formula-header" v-html="formatColumnLabel(col)"></span>
+        </template>
+      </el-table-column>
       <el-table-column
         v-if="predictions.length"
         prop="prediction"
@@ -109,6 +113,7 @@ import { computed, nextTick, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { DataAnalysis, Download, Histogram } from '@element-plus/icons-vue'
 import { COLUMNS_TO_EXTRACT } from '../constants'
+import { formatColumnLabel } from '../utils/formulaLabel'
 import { useCharts } from '../composables/useCharts'
 
 const { t } = useI18n()
@@ -283,6 +288,13 @@ onMounted(() => {
   color: #173a72;
   font-size: 14px;
   font-weight: 900;
+}
+
+.formula-header sub,
+.formula-header sup {
+  font-size: 0.72em;
+  font-weight: 700;
+  line-height: 0;
 }
 
 .result-table :deep(.el-table__row td) {

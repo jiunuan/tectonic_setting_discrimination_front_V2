@@ -234,35 +234,39 @@
       </aside>
 
       <section class="workspace-main">
-        <div class="workspace-head" v-draggable>
-          <div class="drag-handle">
-            <span class="eyebrow">{{ predictions.length ? (workspaceTab === 'map' ? t('workspace.eyebrowMap') : t('workspace.eyebrowResult')) : t('workspace.eyebrowUpload') }}</span>
-            <h2>{{ predictions.length ? (workspaceTab === 'map' ? t('workspace.titleMap') : t('workspace.titleResult')) : t('workspace.titleUpload') }}</h2>
-            <p>{{ t('workspace.currentFile') }}：{{ currentFileName || t('workspace.waitingFile') }} · {{ fileData.length }} {{ t('workspace.samplesUnit') }}</p>
+        <!-- 中文注释：地图模式下 .workspace-topbar 把标题区与右侧 Tab/按钮合成顶部一栏；
+             非地图模式用 display:contents 透明化，保持原有统计页布局不变。 -->
+        <div class="workspace-topbar">
+          <div class="workspace-head" v-draggable>
+            <div class="drag-handle">
+              <span class="eyebrow">{{ predictions.length ? (workspaceTab === 'map' ? t('workspace.eyebrowMap') : t('workspace.eyebrowResult')) : t('workspace.eyebrowUpload') }}</span>
+              <h2>{{ predictions.length ? (workspaceTab === 'map' ? t('workspace.titleMap') : t('workspace.titleResult')) : t('workspace.titleUpload') }}</h2>
+              <p>{{ t('workspace.currentFile') }}：{{ currentFileName || t('workspace.waitingFile') }} · {{ fileData.length }} {{ t('workspace.samplesUnit') }}</p>
+            </div>
           </div>
-        </div>
-        <!-- head-right 改为独立兄弟节点 + 自带 drag-handle，与 head 互不影响 -->
-        <div class="workspace-head-right" v-draggable>
-          <span class="drag-handle workspace-head-right-grip" :title="t('workspace.dragHandleTitle')" aria-hidden="true">⋮⋮</span>
-          <div v-if="predictions.length" class="view-tabs">
-            <button
-              type="button"
-              :class="['view-tab', { active: workspaceTab === 'stat' }]"
-              @click="workspaceTab = 'stat'"
-            >
-              {{ t('workspace.tabStat') }}
-            </button>
-            <button
-              type="button"
-              :class="['view-tab', { active: workspaceTab === 'map' }]"
-              @click="workspaceTab = 'map'"
-            >
-              {{ t('workspace.tabMap') }}
-            </button>
+          <!-- head-right 改为独立兄弟节点 + 自带 drag-handle，与 head 互不影响 -->
+          <div class="workspace-head-right" v-draggable>
+            <span class="drag-handle workspace-head-right-grip" :title="t('workspace.dragHandleTitle')" aria-hidden="true">⋮⋮</span>
+            <div v-if="predictions.length" class="view-tabs">
+              <button
+                type="button"
+                :class="['view-tab', { active: workspaceTab === 'stat' }]"
+                @click="workspaceTab = 'stat'"
+              >
+                {{ t('workspace.tabStat') }}
+              </button>
+              <button
+                type="button"
+                :class="['view-tab', { active: workspaceTab === 'map' }]"
+                @click="workspaceTab = 'map'"
+              >
+                {{ t('workspace.tabMap') }}
+              </button>
+            </div>
+            <el-button type="primary" size="large" :icon="UploadFilled" @click="showUploadDialog = true">
+              {{ t('workspace.reupload') }}
+            </el-button>
           </div>
-          <el-button type="primary" size="large" :icon="UploadFilled" @click="showUploadDialog = true">
-            {{ t('workspace.reupload') }}
-          </el-button>
         </div>
 
         <!-- 统计分析视图 -->
@@ -1991,45 +1995,81 @@ onMounted(() => {
   grid-template-columns: 280px minmax(0, 1fr) 360px;
 }
 
+/* 地图模式：标题区 + 右侧 Tab/按钮合成顶部一栏，作为系统标题栏下方的独立条带，
+   在文档流中占据高度，不再悬浮覆盖地图。 */
+.workspace-map-mode .workspace-topbar {
+  position: relative;
+  z-index: 26;
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  /* 左侧留出流程栏开关按钮(左上角)空间，避免标题被遮挡 */
+  padding: 10px 18px 10px 58px;
+  background: #fff;
+  border-bottom: 1px solid #e3edf9;
+  box-shadow: 0 4px 14px rgba(20, 61, 112, 0.06);
+}
+
+/* 流程栏展开时，开关按钮移入左侧栏，顶栏左侧无需再留空 */
+.workspace-process-open .workspace-topbar {
+  padding-left: 18px;
+}
+
+/* 合并后内部两块不再各自成卡片，去掉定位与卡片样式 */
 .workspace-map-mode .workspace-head {
-  position: absolute;
-  top: 18px;
-  left: 76px;
-  z-index: 25;
-  min-height: 78px;
-  padding: 14px 18px;
-  border: 1px solid rgba(184, 213, 255, 0.55);
-  border-radius: 12px;
-  background: rgba(255, 255, 255, 0.22);
-  box-shadow: 0 16px 38px rgba(20, 61, 112, 0.18);
-  backdrop-filter: blur(14px);
+  position: static;
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: none;
+  box-shadow: none;
+  backdrop-filter: none;
+}
+
+/* 标题与“当前文件”同行显示，文件信息不换到第二行 */
+.workspace-map-mode .workspace-head .drag-handle {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  column-gap: 14px;
+  row-gap: 0;
+}
+
+.workspace-map-mode .workspace-head .eyebrow {
+  display: none;
 }
 
 .workspace-map-mode .workspace-head h2 {
-  font-size: 27px;
-  margin-top: 4px;
+  font-size: 22px;
+  margin: 0;
+  white-space: nowrap;
 }
 
 .workspace-map-mode .workspace-head p {
-  font-size: 14px;
+  font-size: 13.5px;
+  margin: 0;
+  white-space: nowrap;
 }
 
 .workspace-map-mode .workspace-head-right {
-  position: fixed;
-  top: 92px;
-  left: 48%;
-  z-index: 26;
+  position: static;
+  z-index: auto;
   transform: none;
-  display: flex;
+  flex: 0 0 auto;
   flex-direction: row;
   align-items: center;
   white-space: nowrap;
-  padding: 6px;
-  border: 1px solid rgba(184, 213, 255, 0.55);
-  border-radius: 10px;
-  background: rgba(255, 255, 255, 0.22);
-  box-shadow: 0 14px 34px rgba(20, 61, 112, 0.16);
-  backdrop-filter: blur(14px);
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: none;
+  box-shadow: none;
+  backdrop-filter: none;
 }
 
 .workspace-map-mode .workspace-head-right :deep(.el-button) {
@@ -2059,7 +2099,13 @@ onMounted(() => {
   gap: 0;
 }
 
-.workspace-map-mode :deep(.mv-root),
+/* 顶栏占据高度后，地图填满 workspace-main 的剩余空间 */
+.workspace-map-mode :deep(.mv-root) {
+  flex: 1;
+  height: auto;
+  min-height: 0;
+}
+
 .workspace-map-mode :deep(.mv-map-wrap) {
   height: 100%;
   min-height: 0;
@@ -2105,7 +2151,7 @@ onMounted(() => {
   position: absolute;
   top: 12px;
   left: 0;
-  z-index: 20;
+  z-index: 30;
   display: inline-flex;
   align-items: center;
   gap: 6px;
@@ -2238,6 +2284,11 @@ onMounted(() => {
   display: flex;
   flex-direction: column;
   gap: 10px;
+}
+
+/* 默认透明化：不影响统计页原有 head / head-right 布局；仅地图模式下变成顶栏 */
+.workspace-topbar {
+  display: contents;
 }
 
 /* 统计模式下：head-right 浮到 workspace-main 右上角空白处 */
@@ -2589,9 +2640,9 @@ onMounted(() => {
     grid-template-columns: 1fr;
   }
 
-  .workspace-map-mode .workspace-head {
-    padding-left: 0;
-    padding-top: 52px;
+  .workspace-map-mode .workspace-topbar {
+    flex-wrap: wrap;
+    gap: 8px 12px;
   }
 
   .workspace-process-open .process-toggle-btn {

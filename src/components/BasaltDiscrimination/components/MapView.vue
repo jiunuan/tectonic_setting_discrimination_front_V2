@@ -15,14 +15,14 @@
         <button class="mv-ctrl-btn" :title="t('mapView.btnExportImg')" @click="exportMapImage">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="M7 10l5 5 5-5"/><path d="M12 15V3"/></svg>
         </button>
-        <button class="mv-ctrl-btn" :title="t('mapView.btnExportGlobal', { zoom: globalExportZoom, w: 512 * 2 ** globalExportZoom, h: Math.round(512 * 2 ** globalExportZoom * 170.1022576 / 360) })" :disabled="globalExporting" @click="exportGlobalBasemap()">
+        <!-- <button class="mv-ctrl-btn" :title="t('mapView.btnExportGlobal', { zoom: globalExportZoom, w: 512 * 2 ** globalExportZoom, h: Math.round(512 * 2 ** globalExportZoom * 170.1022576 / 360) })" :disabled="globalExporting" @click="exportGlobalBasemap()">
           <svg v-if="!globalExporting" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18"/></svg>
           <svg v-else width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" class="mv-spin"><path d="M21 12a9 9 0 1 1-6.2-8.55"/></svg>
         </button>
         <select v-model.number="globalExportZoom" class="mv-zoom-select" :title="t('mapView.zoomSelectTitle')">
           <option :value="3">z3</option>
           <option :value="4">z4</option>
-        </select>
+        </select> -->
         <!-- <label class="mv-ctrl-check" title="导出时叠加样品点">
           <input type="checkbox" v-model="globalExportWithSamples" />
           <span>样品</span>
@@ -1085,7 +1085,7 @@ defineExpose({
 
 /* OL zoom controls styling */
 :deep(.ol-zoom) {
-  top: 132px;
+  top: 30px;
   left: 24px;
   display: flex;
   flex-direction: column;
@@ -1114,7 +1114,7 @@ defineExpose({
 /* Extra control buttons */
 .mv-ctrl-extra {
   position: absolute;
-  top: 220px;
+  top: 118px;
   left: 24px;
   display: flex;
   flex-direction: column;

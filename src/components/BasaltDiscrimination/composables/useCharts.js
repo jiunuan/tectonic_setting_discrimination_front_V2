@@ -1,10 +1,16 @@
 import * as echarts from 'echarts'
-import { ref, onMounted, onUnmounted } from 'vue'
+import { ref, onMounted, onUnmounted, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { TECTONIC_SETTINGS_MAP, TECTONIC_COLORS } from '../constants'
+import { TECTONIC_COLORS } from '../constants'
 
 export function useCharts(predictionsRef) {
-  const { t } = useI18n()
+  const { t, tm, locale } = useI18n()
+  // 中文注释：构造环境名称按当前语言本地化（settings 字典的 key 含空格/连字符，
+  // 用 tm() + 索引比 t() 的 keypath 解析更可靠），匹配不到时回退原始标签。
+  const localizeSetting = (label) => {
+    const dict = tm('settings')
+    return (dict && dict[label]) || label
+  }
   const pieChartRef = ref(null)
   const barChartRef = ref(null)
   let pieChart = null
@@ -38,7 +44,7 @@ export function useCharts(predictionsRef) {
     })
 
     const chartData = Object.entries(counts).map(([key, value]) => ({
-      name: TECTONIC_SETTINGS_MAP[key] || key,
+      name: localizeSetting(key),
       value,
       itemStyle: {
         color: TECTONIC_COLORS[key] || '#64748b'
@@ -62,16 +68,19 @@ export function useCharts(predictionsRef) {
       legend: {
         orient: 'vertical',
         left: 'left',
-        top: 'middle'
+        top: 'middle',
+        type: 'scroll',
+        textStyle: { fontSize: 12 }
       },
       series: [
         {
           type: 'pie',
-          radius: '52%',
+          radius: '60%',
+          center: ['62%', '56%'],
           data: sortedData,
-          label: {
-            formatter: '{b}'
-          }
+          // 中文注释：扇区名称已由左侧图例与 tooltip 表达，关闭扇区标签避免长名称重叠错乱
+          label: { show: false },
+          labelLine: { show: false }
         }
       ]
     })
@@ -120,6 +129,10 @@ export function useCharts(predictionsRef) {
     pieChart?.resize()
     barChart?.resize()
   }
+
+  // 中文注释：echarts 是命令式渲染，切换语言不会像模板那样自动更新，
+  // 这里监听 locale 变化后重绘，使图表标题/图例/坐标轴名跟随语言切换。
+  watch(locale, () => updateCharts())
 
   onMounted(() => {
     window.addEventListener('resize', handleResize)
