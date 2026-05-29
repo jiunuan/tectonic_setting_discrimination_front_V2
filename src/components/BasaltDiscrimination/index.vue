@@ -199,7 +199,7 @@
     <main
       v-else
       class="workspace"
-      :class="{ 'workspace-map-mode': workspaceTab === 'map', 'workspace-process-open': workspaceTab === 'map' && mapProcessOpen }"
+      :class="{ 'workspace-map-mode': workspaceTab === 'map', 'workspace-process-open': workspaceTab === 'map' && mapProcessOpen, 'workspace-side-open': workspaceTab === 'map' && mapSidePanelOpen }"
     >
       <button
         v-if="workspaceTab === 'map'"
@@ -701,10 +701,12 @@ const useCases = computed(() => (tm('home.useCases') || []).map((item, i) => ({
 const recentFiles = computed(() => tm('home.recentFiles') || [])
 
 const sampleFiles = [
-  { name: 'Back_arc_basin.csv', path: 'data/Back_arc_basin.csv' },
-  { name: 'Isua.csv', path: 'data/Isua.csv' },
-  { name: 'Norseman&Kambalda.csv', path: 'data/Norseman&Kambalda.csv' },
-  { name: 'Isua.xlsx', path: 'data/Isua.xlsx' }
+  { name: 'archean_basalt.csv', path: 'data/archean_basalt.csv' },
+  { name: 'BACK-ARC_BASIN.csv', path: 'data/BACK-ARC_BASIN.csv' },
+  { name: 'Continental_arc.csv', path: 'data/Continental_arc.csv' },
+  { name: 'North_China_Craton.csv', path: 'data/North_China_Craton.csv' },
+  { name: 'Superior_Abitibi.csv', path: 'data/Superior_Abitibi.csv' },
+  { name: 'Isua.csv', path: 'data/Isua.csv' }
 ]
 
 // preprocessOptions 用 computed 而非静态数组，是因为描述文字需要随 imputeMethod 同步更新，
@@ -1973,10 +1975,21 @@ onMounted(() => {
   overflow: hidden;
 }
 
+/* 右侧空间筛选侧栏展开：地图不再全屏，让出右侧固定栏，二者同高协调 */
+.workspace.workspace-map-mode.workspace-side-open {
+  grid-template-columns: minmax(0, 1fr) 360px;
+  gap: 18px;
+  padding: 18px;
+}
+
 .workspace.workspace-map-mode.workspace-process-open {
   grid-template-columns: 280px minmax(0, 1fr);
   gap: 18px;
   padding: 18px;
+}
+
+.workspace.workspace-map-mode.workspace-process-open.workspace-side-open {
+  grid-template-columns: 280px minmax(0, 1fr) 360px;
 }
 
 .workspace-map-mode .workspace-head {
@@ -2054,12 +2067,12 @@ onMounted(() => {
 }
 
 .workspace-map-mode .workspace-side {
-  position: absolute;
-  top: 24px;
-  right: 24px;
-  z-index: 28;
-  width: 340px;
-  max-height: calc(100% - 48px);
+  /* 作为独立右侧栏，与主界面（地图）同高，不再悬浮在地图之上 */
+  position: relative;
+  z-index: 1;
+  width: auto;
+  height: 100%;
+  min-height: 0;
 }
 
 .map-side-chip {
@@ -2571,7 +2584,9 @@ onMounted(() => {
   }
 
   .workspace.workspace-map-mode,
-  .workspace.workspace-map-mode.workspace-process-open {
+  .workspace.workspace-map-mode.workspace-process-open,
+  .workspace.workspace-map-mode.workspace-side-open,
+  .workspace.workspace-map-mode.workspace-process-open.workspace-side-open {
     grid-template-columns: 1fr;
   }
 
@@ -2751,6 +2766,10 @@ onMounted(() => {
 }
 
 .workspace-map-mode .map-filter-panel {
+  /* 拉满侧栏列高，使其与地图主界面高度一致 */
+  flex: 1;
+  min-height: 0;
+  max-height: 100%;
   background: rgba(255, 255, 255, 0.72);
   border-color: rgba(184, 213, 255, 0.72);
   box-shadow: 0 18px 42px rgba(20, 61, 112, 0.2);

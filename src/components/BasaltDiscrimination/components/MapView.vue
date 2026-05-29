@@ -1199,7 +1199,7 @@ defineExpose({
 .mv-overlay-tr {
   position: absolute;
   top: 24px;
-  right: 390px;
+  right: 24px;
   display: flex;
   flex-direction: column;
   gap: 8px;
@@ -1495,10 +1495,10 @@ defineExpose({
 .mv-floating-stats {
   position: absolute;
   left: 300px;
-  right: 390px;
+  right: 24px;
   bottom: 38px;
   display: grid;
-  grid-template-columns: minmax(280px, 0.92fr) minmax(300px, 1fr) minmax(300px, 1fr);
+  grid-template-columns: minmax(340px, 1.12fr) minmax(300px, 1fr) minmax(300px, 1fr);
   gap: 12px;
   z-index: 12;
   pointer-events: none;
@@ -1506,7 +1506,7 @@ defineExpose({
 
 .mv-floating-stats.collapsed {
   left: auto;
-  right: 390px;
+  right: 24px;
   bottom: 42px;
   display: block;
 }
@@ -1541,15 +1541,15 @@ defineExpose({
 
 .mv-pie-left {
   position: relative;
-  flex: 0 0 116px;
-  width: 116px;
-  height: 116px;
+  flex: 0 0 140px;
+  width: 140px;
+  height: 140px;
   align-self: center;
 }
 
 .mv-pie-dom {
-  width: 116px;
-  height: 116px;
+  width: 140px;
+  height: 140px;
 }
 
 .mv-pie-center-text {
@@ -1560,10 +1560,15 @@ defineExpose({
   align-items: center;
   justify-content: center;
   pointer-events: none;
-  font-size: 13px;
+  font-size: 11px;
   color: #657b9c;
-  line-height: 1.3;
+  line-height: 1.2;
   text-align: center;
+}
+
+/* 限制标签宽度，使较长的英文 "Total samples" 在圆环内换行而不溢出 */
+.mv-pie-center-text > div:first-child {
+  max-width: 72px;
 }
 
 .mv-pie-center-text strong {
