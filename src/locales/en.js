@@ -11,10 +11,8 @@ export default {
   },
   nav: {
     home: 'Home',
+    guide: 'Quick start',
     upload: 'Upload',
-    process: 'Preprocess',
-    model: 'Classify',
-    result: 'Results',
     help: 'Help'
   },
   home: {
@@ -22,6 +20,7 @@ export default {
     heroDesc: 'A discrimination tool for basalt major and trace element data. Supports CSV / XLSX import, batch cleaning, missing-value checks, anhydrous normalization, result review and export.',
     heroStart: 'Get started',
     heroDoc: 'View docs',
+    heroGuide: 'Quick start guide',
     promise1: 'Data is processed locally',
     promise2: 'Works with common geochemical tables',
     promise3: 'Supports review and export of results',
@@ -65,7 +64,15 @@ export default {
       { name: 'basalt_samples.csv', count: 128, time: 'Public-database cleaning' },
       { name: 'field_batch_20240518.csv', count: 96, time: 'Field sample screening' }
     ],
-    samplePanelTitle: 'Sample datasets'
+    samplePanelTitle: 'Sample datasets',
+    infoFrameTitle: 'System features & guide',
+    guideTitle: 'Quick start guide',
+    guideSubtitle: 'Get results in three steps: download one of the sample datasets below, upload and wait while it runs, then review the discrimination results.',
+    guideSteps: [
+      { title: 'Download sample data', desc: 'Pick any CSV from the sample datasets above and save it locally' },
+      { title: 'Upload and run', desc: 'Click "Get started" to upload the table and run cleaning & discrimination' },
+      { title: 'Review results', desc: 'Check tectonic settings and confidence on the result page, then export' }
+    ]
   },
   workspace: {
     eyebrowUpload: 'Upload',

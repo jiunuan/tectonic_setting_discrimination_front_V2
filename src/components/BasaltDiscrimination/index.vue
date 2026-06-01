@@ -6,7 +6,7 @@
     />
     <help-dialog v-model:visible="showHelpDialog" />
 
-    <header class="app-header">
+    <header class="app-header" :class="{ 'header-en': locale === 'en' }">
       <div class="brand-block" @click="goHome">
         <div class="brand-logo">
           <span class="cube-core"></span>
@@ -55,6 +55,10 @@
               <el-icon><Reading /></el-icon>
               {{ t('home.heroDoc') }}
             </button>
+            <button class="guide-button" type="button" @click="scrollToQuickGuide">
+              <el-icon><Guide /></el-icon>
+              {{ t('home.heroGuide') }}
+            </button>
           </div>
           <div class="hero-promises">
             <span>
@@ -92,6 +96,51 @@
         </div>
       </section>
 
+      <section ref="quickGuideRef" class="quick-guide-card">
+        <div class="qg-head">
+          <h2>{{ t('home.guideTitle') }}</h2>
+          <p>{{ t('home.guideSubtitle') }}</p>
+        </div>
+
+        <!-- 中文注释：示例数据集横向条带——单行并排展示，方便用户快速下载试用数据。 -->
+        <div class="qg-dataset-bar">
+          <span class="qg-dataset-label">
+            <el-icon><Files /></el-icon>
+            {{ t('home.samplePanelTitle') }}
+          </span>
+          <div class="qg-dataset-list">
+            <a
+              v-for="file in sampleFiles"
+              :key="file.name"
+              class="qg-dataset-chip"
+              :href="resolvePublicUrl(file.path)"
+              :download="file.name"
+            >
+              <el-icon><Document /></el-icon>
+              <span>{{ file.name }}</span>
+              <el-icon class="qg-dl"><Download /></el-icon>
+            </a>
+          </div>
+        </div>
+
+        <!-- 中文注释：三步快速使用说明，对应"下载数据 → 运行等待 → 查看结果"。 -->
+        <div class="qg-steps">
+          <div v-for="(step, index) in guideSteps" :key="step.title" class="qg-step">
+            <span class="qg-step-no">{{ index + 1 }}</span>
+            <div class="qg-step-icon">
+              <el-icon><component :is="step.icon" /></el-icon>
+            </div>
+            <div class="qg-step-text">
+              <strong>{{ step.title }}</strong>
+              <p>{{ step.desc }}</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- 中文注释：以下三组为纯说明性、无交互内容，统一收进一个大框做视觉分组。 -->
+      <div class="info-frame">
+      <div class="info-frame-head">{{ t('home.infoFrameTitle') }}</div>
       <section class="feature-grid" :aria-label="t('home.featureAriaLabel')">
         <article v-for="item in featureCards" :key="item.title" class="feature-card">
           <div class="feature-icon">
@@ -178,21 +227,8 @@
             </tbody>
           </table>
         </article>
-
-        <article class="panel sample-panel">
-          <div class="panel-title">{{ t('home.samplePanelTitle') }}</div>
-          <a
-            v-for="file in sampleFiles"
-            :key="file.name"
-            :href="resolvePublicUrl(file.path)"
-            :download="file.name"
-          >
-            <el-icon><Document /></el-icon>
-            <span>{{ file.name }}</span>
-            <el-icon><Download /></el-icon>
-          </a>
-        </article>
       </section>
+      </div>
     </main>
 
     <main
@@ -498,6 +534,7 @@ import {
   Files,
   Finished,
   Fold,
+  Guide,
   Histogram,
   HomeFilled,
   Loading,
@@ -537,7 +574,7 @@ import {
   TECTONIC_SETTINGS_MAP
 } from './constants'
 
-const { t, tm } = useI18n()
+const { t, tm, locale } = useI18n()
 
 const localizeSetting = (label) => {
   const dict = tm('settings')
@@ -546,6 +583,7 @@ const localizeSetting = (label) => {
 
 const showUploadDialog = ref(false)
 const showHelpDialog = ref(false)
+const quickGuideRef = ref(null)
 const fileData = ref([])
 const processedData = ref([])
 const predictions = ref([])
@@ -663,8 +701,10 @@ watch(workspaceTab, async (tab) => {
 })
 
 // 图标映射保持常量，文案通过 i18n 数组按当前语言取
-const NAV_ICONS = [HomeFilled, UploadFilled, Operation, Share, TrendCharts, QuestionFilled]
-const NAV_KEYS = ['home', 'upload', 'process', 'model', 'result', 'help']
+// 数据整理/构造判别/结果分析原先都只是打开同一个上传弹窗或不跳转，属冗余，已移除；
+// 改为"快速开始"锚点项（滚动到首页快速使用指南区），实际工作流在工作台内通过"统计分析/空间分布"标签切换。
+const NAV_ICONS = [HomeFilled, Guide, UploadFilled, QuestionFilled]
+const NAV_KEYS = ['home', 'guide', 'upload', 'help']
 const navItems = computed(() => NAV_KEYS.map((key, i) => ({
   key,
   label: t(`nav.${key}`),
@@ -683,6 +723,14 @@ const quickSteps = computed(() => (tm('home.quickSteps') || []).map((item, i) =>
   title: item.title,
   desc: item.desc,
   icon: QUICK_ICONS[i]
+})))
+
+// 快速使用指南三步：下载示例数据 → 上传并运行等待 → 查看判别结果
+const GUIDE_ICONS = [Download, VideoPlay, Finished]
+const guideSteps = computed(() => (tm('home.guideSteps') || []).map((item, i) => ({
+  title: item.title,
+  desc: item.desc,
+  icon: GUIDE_ICONS[i]
 })))
 
 const CAPABILITY_ICONS = [Document, WarningFilled, Operation, Histogram]
@@ -805,21 +853,17 @@ const pointStyle = (index) => {
   }
 }
 
+const scrollToQuickGuide = () => {
+  quickGuideRef.value?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+}
+
 const handleNav = (key) => {
   if (key === 'home') { goHome(); return }
+  // 中文注释：'快速开始'仅滚动到首页指南区；工作台模式下指南区未渲染，
+  // scrollToQuickGuide 内部已用可选链兜底，不会误触发也不会清空已加载数据。
+  if (key === 'guide') { scrollToQuickGuide(); return }
   if (key === 'upload') { showUploadDialog.value = true; return }
-  if (key === 'help') {
-    showHelpDialog.value = true
-    return
-  }
-  if (!fileData.value.length) {
-    ElMessage.info(t('message.uploadFirst'))
-    showUploadDialog.value = true
-    return
-  }
-  if (key === 'result' && !predictions.value.length) {
-    ElMessage.info(t('message.processBeforeResult'))
-  }
+  if (key === 'help') { showHelpDialog.value = true }
 }
 
 const handleFileProcessed = (rows, filename, coordinates = []) => {
@@ -1218,7 +1262,9 @@ onMounted(() => {
   top: 0;
   z-index: 50;
   display: grid;
-  grid-template-columns: minmax(420px, 520px) 1fr auto;
+  /* 中文注释：品牌列上限改为 auto，让较长的英文系统名能把该列撑宽并单行完整显示；
+     min 仍保留 420px 作为中文短标题时的基准宽度，避免导航整体左移。 */
+  grid-template-columns: minmax(420px, auto) 1fr auto;
   align-items: stretch;
   min-height: 84px;
   padding: 0 24px;
@@ -1288,13 +1334,34 @@ onMounted(() => {
 }
 
 .brand-text strong {
+  /* 中文注释：标题单行显示；品牌列宽度自适应（见 .app-header），系统名会把列撑宽而不换行。
+     中文短名用大号保持醒目；英文名较长，按语言降一档字号（见 .header-en）以便常见宽度也能单行放下。
+     ellipsis 仅作为极端窄屏下的兜底，正常宽度不会触发。 */
   overflow: hidden;
   color: #fff;
-  font-size: 20px;
+  font-size: 32px;
   font-weight: 700;
-  line-height: 1.05;
+  line-height: 1.1;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.header-en .brand-text strong {
+  font-size: 22px;
+  letter-spacing: 0.2px;
+}
+
+/* 中文注释：英文系统名较长，仅在英文模式下收紧导航与右侧工具的占位，
+   让品牌列在常见笔记本宽度(1366/1280)也能把标题单行放下；中文模式不受影响。 */
+.header-en .nav-item {
+  min-width: 102px;
+  padding: 0 13px;
+  font-size: 16px;
+}
+
+.header-en .header-tools {
+  gap: 16px;
+  padding-left: 16px;
 }
 
 .brand-text span {
@@ -1473,6 +1540,32 @@ onMounted(() => {
   font-size: 21px;
 }
 
+.guide-button {
+  min-height: 54px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 14px;
+  border: 0;
+  background: transparent;
+  color: #0b5bd6;
+  font-family: inherit;
+  font-size: 16px;
+  font-weight: 800;
+  cursor: pointer;
+  transition: color 0.2s ease;
+}
+
+.guide-button:hover {
+  color: #0a3aa8;
+  text-decoration: underline;
+  text-underline-offset: 4px;
+}
+
+.guide-button .el-icon {
+  font-size: 20px;
+}
+
 .hero-promises {
   gap: 48px;
   margin-top: 36px;
@@ -1632,6 +1725,223 @@ onMounted(() => {
 .network-card i:nth-child(5) { right: 36px; top: 72px; }
 .network-card i:nth-child(6) { left: 68px; bottom: 18px; }
 .network-card i:nth-child(7) { right: 14px; bottom: 34px; }
+
+.quick-guide-card {
+  margin-top: 18px;
+  padding: 22px 26px 24px;
+  border: 1px solid #d8e6f7;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.96);
+  box-shadow: 0 8px 22px rgba(25, 78, 146, 0.09);
+  scroll-margin-top: 100px;
+}
+
+.qg-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 6px 14px;
+  margin-bottom: 16px;
+}
+
+.qg-head h2 {
+  margin: 0;
+  color: #08235a;
+  font-size: 20px;
+  font-weight: 900;
+}
+
+.qg-head p {
+  margin: 0;
+  color: #41618c;
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+/* 示例数据集横向条带 */
+.qg-dataset-bar {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 14px 16px;
+  margin-bottom: 16px;
+  border: 1.5px solid #8fbcf2;
+  border-left: 5px solid #0b66ff;
+  border-radius: 10px;
+  background: linear-gradient(135deg, #e3f0ff, #eef6ff);
+  box-shadow: 0 6px 16px rgba(19, 103, 236, 0.12);
+}
+
+.qg-dataset-label {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  color: #08368a;
+  font-size: 15px;
+  font-weight: 900;
+  white-space: nowrap;
+}
+
+.qg-dataset-label .el-icon {
+  color: #0b66ff;
+  font-size: 20px;
+}
+
+.qg-dataset-list {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  gap: 10px;
+  overflow-x: auto;
+  padding-bottom: 2px;
+}
+
+.qg-dataset-chip {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: 40px;
+  padding: 0 15px;
+  border: 1.5px solid #a9caf3;
+  border-radius: 999px;
+  background: #fff;
+  color: #0b4ec2;
+  font-size: 13.5px;
+  font-weight: 800;
+  text-decoration: none;
+  white-space: nowrap;
+  box-shadow: 0 2px 6px rgba(19, 103, 236, 0.1);
+  transition: border-color 0.2s ease, background 0.2s ease, color 0.2s ease, box-shadow 0.2s ease, transform 0.2s ease;
+}
+
+.qg-dataset-chip:hover {
+  border-color: #0b66ff;
+  background: #0b66ff;
+  color: #fff;
+  box-shadow: 0 8px 18px rgba(19, 103, 236, 0.28);
+  transform: translateY(-1px);
+}
+
+.qg-dataset-chip .qg-dl {
+  color: #0b66ff;
+  font-size: 16px;
+}
+
+.qg-dataset-chip:hover .qg-dl,
+.qg-dataset-chip:hover .el-icon {
+  color: #fff;
+}
+
+/* 三步说明 */
+.qg-steps {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.qg-step {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 16px 16px 16px 18px;
+  border: 1px solid #dce9f9;
+  border-radius: 8px;
+  background: #f8fbff;
+}
+
+.qg-step:not(:last-child)::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  right: -13px;
+  z-index: 1;
+  width: 16px;
+  height: 2px;
+  transform: translateY(-50%);
+  background: linear-gradient(90deg, #8bbcff 50%, transparent 50%);
+  background-size: 8px 2px;
+}
+
+.qg-step-no {
+  flex: 0 0 auto;
+  width: 26px;
+  height: 26px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: #0b66ff;
+  color: #fff;
+  font-size: 14px;
+  font-weight: 900;
+}
+
+.qg-step-icon {
+  flex: 0 0 auto;
+  width: 48px;
+  height: 48px;
+  display: grid;
+  place-items: center;
+  border-radius: 8px;
+  background: #eaf3ff;
+  color: #0b66ff;
+  font-size: 26px;
+}
+
+.qg-step-text {
+  min-width: 0;
+}
+
+.qg-step-text strong {
+  display: block;
+  margin-bottom: 4px;
+  color: #0a3578;
+  font-size: 16px;
+}
+
+.qg-step-text p {
+  margin: 0;
+  color: #507096;
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+/* 说明性内容大框：把系统能力、快速开始/数据处理/数据隐私、适用场景等无交互区块统一分组。 */
+.info-frame {
+  margin-top: 18px;
+  padding: 20px 24px 26px;
+  border: 1.5px solid #9fc0ed;
+  border-radius: 14px;
+  background: linear-gradient(180deg, #e4eefc 0%, #edf4fd 100%);
+  box-shadow: 0 10px 26px rgba(25, 78, 146, 0.1);
+}
+
+.info-frame-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 18px;
+  padding-bottom: 14px;
+  border-bottom: 1px dashed #b6cff0;
+  color: #08235a;
+  font-size: 17px;
+  font-weight: 900;
+}
+
+.info-frame-head::before {
+  content: '';
+  flex: 0 0 auto;
+  width: 5px;
+  height: 20px;
+  border-radius: 3px;
+  background: linear-gradient(180deg, #2f86ff, #0b54c8);
+}
+
+.info-frame > .feature-grid {
+  margin-top: 0;
+}
 
 .feature-grid {
   display: grid;
@@ -1898,7 +2208,7 @@ onMounted(() => {
 }
 
 .lower-grid {
-  grid-template-columns: minmax(560px, 1.08fr) minmax(390px, 0.68fr) minmax(310px, 0.52fr);
+  grid-template-columns: minmax(560px, 1.55fr) minmax(390px, 1fr);
   margin-top: 18px;
 }
 
@@ -1943,23 +2253,6 @@ onMounted(() => {
   background: #f1f6fd;
   color: #315177;
   font-weight: 800;
-}
-
-.sample-panel {
-  display: flex;
-  flex-direction: column;
-}
-
-.sample-panel a {
-  display: grid;
-  grid-template-columns: auto 1fr auto;
-  align-items: center;
-  gap: 10px;
-  min-height: 40px;
-  color: #0c4fb6;
-  font-size: 14px;
-  font-weight: 700;
-  text-decoration: none;
 }
 
 .workspace {

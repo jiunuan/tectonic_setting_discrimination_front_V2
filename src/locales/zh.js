@@ -11,10 +11,8 @@ export default {
   },
   nav: {
     home: '首页',
+    guide: '快速开始',
     upload: '数据上传',
-    process: '数据整理',
-    model: '构造判别',
-    result: '结果分析',
     help: '帮助文档'
   },
   home: {
@@ -22,6 +20,7 @@ export default {
     heroDesc: '面向玄武岩主量与微量元素数据的构造环境判别工具，支持 CSV / XLSX 表格导入、样品批量整理、缺失值检查、无水归一化、判别结果复核与结果导出。',
     heroStart: '开始使用',
     heroDoc: '查看文档',
+    heroGuide: '快速开始指南',
     promise1: '数据仅在本机处理',
     promise2: '适配常见地球化学表格',
     promise3: '支持结果复核与导出',
@@ -65,7 +64,15 @@ export default {
       { name: 'basalt_samples.csv', count: 128, time: '公开数据库整理' },
       { name: 'field_batch_20240518.csv', count: 96, time: '野外样品初筛' }
     ],
-    samplePanelTitle: '示例数据集'
+    samplePanelTitle: '示例数据集',
+    infoFrameTitle: '系统功能与使用说明',
+    guideTitle: '快速使用指南',
+    guideSubtitle: '三步即可获得判别结果：先下载下方任一示例数据，上传后运行等待，再查看判别结果。',
+    guideSteps: [
+      { title: '下载示例数据', desc: '从上方示例数据集中任选一个 CSV 下载到本机' },
+      { title: '上传并运行等待', desc: '点击"开始使用"上传表格，执行整理与构造判别' },
+      { title: '查看判别结果', desc: '在结果页查看构造环境、置信度并导出结果表' }
+    ]
   },
   workspace: {
     eyebrowUpload: '数据上传',
