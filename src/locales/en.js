@@ -249,7 +249,7 @@ export default {
     uploadFail: 'Invalid file format or incomplete data',
     noData: 'Please upload data first',
     noValidData: 'No valid data available',
-    filteredRows: 'Filtered {invalid} invalid rows, {duplicate} duplicate rows, {remaining} left',
+    filteredRows: 'Filtered {invalid} too-incomplete, {range} out-of-basalt-range, {duplicate} duplicate rows, {remaining} left',
     processing: 'Processing data...',
     processSuccess: 'Data processed successfully',
     processFail: 'Data processing failed',

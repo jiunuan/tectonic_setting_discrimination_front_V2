@@ -249,7 +249,7 @@ export default {
     uploadFail: '文件格式或数据不完整',
     noData: '请先上传数据',
     noValidData: '没有可用的有效数据',
-    filteredRows: '已过滤 {invalid} 行无效数据、{duplicate} 行重复数据，剩余 {remaining} 行',
+    filteredRows: '已过滤 {invalid} 行缺失过多、{range} 行超玄武岩范围、{duplicate} 行重复，剩余 {remaining} 行',
     processing: '正在处理数据...',
     processSuccess: '数据处理完成',
     processFail: '数据处理失败',

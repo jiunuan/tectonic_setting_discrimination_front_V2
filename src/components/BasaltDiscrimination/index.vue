@@ -558,8 +558,13 @@ import {
   predictRows
 } from './composables/useOnnxModel'
 import {
+  ARCHEAN_MGO_MAX,
+  ARCHEAN_REQUIRED_MAJORS,
+  ARCHEAN_SIO2_MAX,
+  ARCHEAN_SIO2_MIN,
   COLUMNS_TO_EXTRACT,
   COLUMNS_TO_EXTRACT1,
+  MAJOR_ELEMENTS,
   MODEL_SEQUENCE_COLUMNS,
   TECTONIC_SETTINGS,
   TECTONIC_SETTINGS_MAP
@@ -675,9 +680,9 @@ const vDraggable = {
   }
 }
 
-// 中文注释：模型输入字段缺失数阈值；太古代样品用更严格的 <16。
+// 中文注释：模型输入字段缺失数阈值。现代 <20；太古代 <18（与官方 archean_data_preprocess.py 对齐）。
 const DEFAULT_MAX_MISSING_FEATURES_EXCLUSIVE = 20
-const MAX_MISSING_FEATURES_EXCLUSIVE = 16
+const MAX_MISSING_FEATURES_EXCLUSIVE = 18
 
 watch(workspaceTab, async (tab) => {
   if (tab === 'map') {
@@ -885,14 +890,50 @@ const filterRows = (rows, options = {}) => {
   const keptIndexes = []
   let invalidCount = 0
   let duplicateCount = 0
+  let rangeCount = 0
+  const archean = !!options.archean
+  const columns = options.columns || COLUMNS_TO_EXTRACT1
   const maxMissingFeaturesExclusive = options.maxMissingFeaturesExclusive || DEFAULT_MAX_MISSING_FEATURES_EXCLUSIVE
 
+  // 中文注释：太古代缺失口径与官方一致——NaN/空 或 ≤0（含负值）都算缺失；现代沿用 ==0/非有限。
+  const isMissing = archean
+    ? (value) => {
+        if (value === null || value === undefined || value === '') return true
+        const numeric = Number(value)
+        return !Number.isFinite(numeric) || numeric <= 0
+      }
+    : isMissingChemicalValue
+  const colIndex = (name) => columns.indexOf(name)
+
   const filteredRows = rows.filter((row, index) => {
-    // 中文注释：模型输入字段缺失数必须小于阈值；太古代样品使用更严格的 <16 规则。
-    const invalidValues = row.filter(value => isMissingChemicalValue(value)).length
+    // 中文注释：模型输入字段缺失数必须小于阈值（现代 <20，太古代 <18）。
+    const invalidValues = row.filter(isMissing).length
     if (invalidValues >= maxMissingFeaturesExclusive) {
       invalidCount += 1
       return false
+    }
+
+    // 中文注释：太古代正式应用集口径——五项关键主量有值(>0)，且无水归一化后
+    // SiO2∈[44,53]、MgO≤18 的玄武岩范围（与 archean_data_preprocess.py 对齐）。
+    if (archean) {
+      const requiredOk = ARCHEAN_REQUIRED_MAJORS.every((name) => {
+        const value = Number(row[colIndex(name)])
+        return Number.isFinite(value) && value > 0
+      })
+      let majorSum = 0
+      for (const name of MAJOR_ELEMENTS) {
+        const value = Number(row[colIndex(name)])
+        if (Number.isFinite(value) && value > 0) majorSum += value
+      }
+      const sio2 = majorSum > 0 ? (Number(row[colIndex('SIO2(WT%)')]) / majorSum) * 100 : NaN
+      const mgo = majorSum > 0 ? (Number(row[colIndex('MGO(WT%)')]) / majorSum) * 100 : NaN
+      const basaltOk = requiredOk
+        && sio2 >= ARCHEAN_SIO2_MIN && sio2 <= ARCHEAN_SIO2_MAX
+        && mgo <= ARCHEAN_MGO_MAX
+      if (!basaltOk) {
+        rangeCount += 1
+        return false
+      }
     }
 
     // 用拼接字符串做哈希去重，避免完全相同的样品重复进入模型导致结果虚胖。
@@ -914,6 +955,7 @@ const filterRows = (rows, options = {}) => {
       total: rows.length,
       invalid: invalidCount,
       duplicate: duplicateCount,
+      range: rangeCount,
       remaining: filteredRows.length
     }
   }
@@ -939,7 +981,9 @@ const handleProcessData = async () => {
       : DEFAULT_MAX_MISSING_FEATURES_EXCLUSIVE
 
     const { rows: filteredModelRows, keptIndexes, stats } = filterRows(modelRows, {
-      maxMissingFeaturesExclusive
+      maxMissingFeaturesExclusive,
+      archean,
+      columns: COLUMNS_TO_EXTRACT1
     })
     const filteredDisplayRows = keptIndexes.map(index => displayRows[index])
 
@@ -954,9 +998,10 @@ const handleProcessData = async () => {
       coordinateData.value = keptIndexes.map(idx => coordinateData.value[idx] || null)
     }
 
-    if (stats.invalid > 0 || stats.duplicate > 0) {
+    if (stats.invalid > 0 || stats.duplicate > 0 || stats.range > 0) {
       ElMessage.warning(t('message.filteredRows', {
         invalid: stats.invalid,
+        range: stats.range,
         duplicate: stats.duplicate,
         remaining: stats.remaining
       }))

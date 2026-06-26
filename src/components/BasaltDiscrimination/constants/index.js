@@ -30,6 +30,16 @@ export const MAJOR_ELEMENTS = [
   'K2O(WT%)', 'CAO(WT%)', 'TIO2(WT%)', 'MNO(WT%)', 'FEOT(WT%)'
 ]
 
+// 太古代正式应用集筛选参数（与 predict_archean/archean_data_preprocess.py 对齐）：
+// 无水归一化后 SiO2∈[44,53] 且 MgO≤18 的玄武岩范围；五项关键主量必须有值。
+export const ARCHEAN_SIO2_MIN = 44.0
+export const ARCHEAN_SIO2_MAX = 53.0
+export const ARCHEAN_MGO_MAX = 18.0
+export const ARCHEAN_MAX_MISSING_EXCLUSIVE = 18
+export const ARCHEAN_REQUIRED_MAJORS = [
+  'SIO2(WT%)', 'AL2O3(WT%)', 'FEOT(WT%)', 'MGO(WT%)', 'CAO(WT%)'
+]
+
 // 中文注释：下标 0..8 必须与模型输出 logits 的类别下标一一对应。
 // 该顺序由训练脚本 pd.factorize(df_train['TECTONIC SETTING']) 的“首次出现序”决定
 // （取自 05_normalize_basalt_train.csv），不是字母序；换模型/重训前务必核对 model_meta.json 的 label_order。
