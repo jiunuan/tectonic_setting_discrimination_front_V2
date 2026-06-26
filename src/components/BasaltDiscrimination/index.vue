@@ -376,14 +376,6 @@
                 <em>{{ t('statSettings.enabled') }}</em>
               </div>
             </div>
-            <div class="impute-method-row">
-              <span class="impute-method-label">{{ t('statSettings.imputeLabel') }}</span>
-              <div class="impute-method-tabs">
-                <button type="button" :class="['method-tab', { active: imputeMethod === 'knn' }]" @click="imputeMethod = 'knn'">{{ t('statSettings.imputeKnn') }}</button>
-                <button type="button" :class="['method-tab', { active: imputeMethod === 'missforest' }]" @click="imputeMethod = 'missforest'">{{ t('statSettings.imputeMissForest') }}</button>
-              </div>
-            </div>
-            <p v-if="imputeMethod === 'missforest'" class="impute-method-hint">{{ t('statSettings.imputeHint') }}</p>
           </article>
 
           <article class="panel model-panel">
@@ -557,7 +549,7 @@ import HelpDialog from './components/HelpDialog.vue'
 import MapView from './components/MapView.vue'
 import LangSwitch from '../LangSwitch.vue'
 import { addAnhydrousNormalizedData } from './composables/anhydrousNormalize'
-import { imputeRowsByKnn, imputeRowsByMissForest, imputeRowsByTrainingMedian, isArcheanFilename, isMissingChemicalValue } from './composables/impute'
+import { imputeRowsByMissForest, isArcheanFilename, isMissingChemicalValue } from './composables/impute'
 import { normalizeData } from './composables/normalize'
 import {
   loadModel,
@@ -568,7 +560,6 @@ import {
 import {
   COLUMNS_TO_EXTRACT,
   COLUMNS_TO_EXTRACT1,
-  MISSFOREST_LABEL_TO_FILE,
   MODEL_SEQUENCE_COLUMNS,
   TECTONIC_SETTINGS,
   TECTONIC_SETTINGS_MAP
@@ -586,6 +577,8 @@ const showHelpDialog = ref(false)
 const quickGuideRef = ref(null)
 const fileData = ref([])
 const processedData = ref([])
+// 中文注释：与 processedData 行/列对齐的缺失mask（COLUMNS_TO_EXTRACT1 列序，1=原始缺失），喂给模型缺失编码分支。
+const processedMasks = ref([])
 const predictions = ref([])
 const coordinateData = ref([])
 const workspaceTab = ref('map') // 'stat' | 'map'
@@ -682,11 +675,7 @@ const vDraggable = {
   }
 }
 
-// 插补方式：'knn' 为纯前端 KNN（无需额外网络请求），'missforest' 为两段式
-//（先 KNN 粗判构造环境，再调用对应环境的预训练 MissForest 模型精插补）。
-// 太古代克拉通样品文件名命中关键词时，MissForest 模式自动回退到 KNN，
-// 因为 MissForest 模型仅用现代玄武岩数据训练，对太古代地球化学代表性不足。
-const imputeMethod = ref('knn')
+// 中文注释：模型输入字段缺失数阈值；太古代样品用更严格的 <16。
 const DEFAULT_MAX_MISSING_FEATURES_EXCLUSIVE = 20
 const MAX_MISSING_FEATURES_EXCLUSIVE = 16
 
@@ -760,14 +749,10 @@ const sampleFiles = [
   { name: 'Isua.csv', path: 'data/Isua.csv' }
 ]
 
-// preprocessOptions 用 computed 而非静态数组，是因为描述文字需要随 imputeMethod 同步更新，
-// 让右侧面板始终反映当前实际使用的插补策略。
 const preprocessOptions = computed(() => [
   {
     title: t('statSettings.preprocess.missing.title'),
-    desc: imputeMethod.value === 'missforest'
-      ? t('statSettings.preprocess.missing.descMissForest')
-      : t('statSettings.preprocess.missing.descKnn'),
+    desc: t('statSettings.preprocess.missing.descKnn'),
     icon: WarningFilled
   },
   { title: t('statSettings.preprocess.anhydrous.title'), desc: t('statSettings.preprocess.anhydrous.desc'), icon: Operation },
@@ -870,6 +855,7 @@ const handleFileProcessed = (rows, filename, coordinates = []) => {
   currentFileName.value = filename
   predictions.value = []
   processedData.value = []
+  processedMasks.value = []
   coordinateData.value = coordinates
   workspaceTab.value = 'stat'
 
@@ -989,64 +975,37 @@ const handleProcessData = async () => {
     const anhydrousDisplayRows = addAnhydrousNormalizedData(displayTableData, COLUMNS_TO_EXTRACT)
     const anhydrousModelRows = buildModelRowsFromTableData(anhydrousDisplayRows)
 
-    let imputedModelRows
+    // 中文注释：缺失mask取自插补/无水化之前的原始值（COLUMNS_TO_EXTRACT1 列序，1=缺失），
+    // 独立于数值通道，喂给模型 GeoDAN 的缺失编码分支。
+    const maskRows = filteredModelRows.map(row =>
+      row.map(value => (isMissingChemicalValue(value) ? 1 : 0))
+    )
 
-    const useMissForest = imputeMethod.value === 'missforest'
+    let imputedModelRows
+    let normalizedRows
 
     if (archean) {
-      // 太古代克拉通样品不做任何近邻插补，缺失值直接置 0。
-      // 理由：KNN/MissForest/训练集中位数都基于现代基性岩，强行插补会污染太古代特征；
-      // 置 0 让 CNN 自己处理"该元素缺失"这一信号，最大限度保留样品原始信息。
+      // 太古代克拉通样品不做近邻插补：数值通道缺失置 0，缺失信息全部交给 mask 通道。
+      // 理由：KNN 参考库基于现代基性岩，强行插补会污染太古代特征。
       ElMessage.warning(t('message.archeanFallback'))
       progressPercentage.value = 50
       imputedModelRows = anhydrousModelRows.map(row =>
-        row.map(v => (v === null || v === undefined || Number.isNaN(v)) ? 0 : v)
+        row.map(v => (isMissingChemicalValue(v) ? 0 : Number(v)))
       )
-      progressPercentage.value = 75
-    } else if (useMissForest && !archean) {
-      // ── 两段式插补：解决"插补时不知道构造环境"的鸡生蛋问题 ───────────────
-      // 第一段：用 KNN 填充缺失值 → 归一化 → CNN 粗判出每行的构造环境标签。
-      // 第二段：把粗判标签映射到对应的 MissForest 模型，对原始（无水归一化后、
-      //         尚未插补的）数据重新插补，利用同类玄武岩的统计规律提升精度。
-      // 最终再归一化后送入 CNN 进行正式判别。
-      progressPercentage.value = 35
-
-      const knnImputedRows = await imputeRowsByKnn(anhydrousModelRows, COLUMNS_TO_EXTRACT1)
-      progressPercentage.value = 50
-
-      await loadModel()
-      const knnNormalized = await normalizeData(knnImputedRows, COLUMNS_TO_EXTRACT1)
-      const knnPredictions = await predictRows(
-        knnNormalized,
-        COLUMNS_TO_EXTRACT1,
-        MODEL_SEQUENCE_COLUMNS,
-        { batchSize: 96 }
+      const normalized = await normalizeData(imputedModelRows, COLUMNS_TO_EXTRACT1)
+      // 与训练口径一致：缺失单元的数值通道强制为 0
+      normalizedRows = normalized.map((row, r) =>
+        row.map((v, k) => (maskRows[r][k] ? 0 : v))
       )
-      const roughLabels = knnPredictions.map(p => p.label)
-      // recognizedCount < total 时说明部分行被分类到无对应 MissForest 模型的标签，
-      // 这些行将沿用 KNN 结果，不影响其余行的精插补。
-      const recognizedCount = roughLabels.filter(l => MISSFOREST_LABEL_TO_FILE[l]).length
-      progressPercentage.value = 65
-
-      if (recognizedCount === 0) {
-        ElMessage.warning(t('message.knnRoughFail'))
-        imputedModelRows = knnImputedRows
-      } else {
-        // 用无水归一化后、尚未经过任何插补的原始行做第二段插补，
-        // 避免 KNN 的插补误差传递进 MissForest 的特征输入。
-        imputedModelRows = await imputeRowsByMissForest(
-          anhydrousModelRows,
-          COLUMNS_TO_EXTRACT1,
-          roughLabels
-        )
-        ElMessage.info(t('message.missForestDone', { recognized: recognizedCount, total: roughLabels.length }))
-      }
-      progressPercentage.value = 80
+      progressPercentage.value = 90
     } else {
-      // ── 单段式 KNN 插补（默认模式或太古代样品回退）──────────────────────
+      // 现代玄武岩：全局轻量 MissForest 插补数值通道（加载失败内部回退 KNN）；
+      // mask 仍标记原始缺失位置。
       progressPercentage.value = 50
-      imputedModelRows = await imputeRowsByKnn(anhydrousModelRows, COLUMNS_TO_EXTRACT1)
+      imputedModelRows = await imputeRowsByMissForest(anhydrousModelRows, COLUMNS_TO_EXTRACT1)
       progressPercentage.value = 75
+      normalizedRows = await normalizeData(imputedModelRows, COLUMNS_TO_EXTRACT1)
+      progressPercentage.value = 90
     }
 
     // 中文注释：表格展示同步写回插补后的数值，便于用户复核哪些字段参与了后续判别。
@@ -1061,8 +1020,8 @@ const handleProcessData = async () => {
       return nextRow
     })
 
-    progressPercentage.value = 90
-    processedData.value = await normalizeData(imputedModelRows, COLUMNS_TO_EXTRACT1)
+    processedData.value = normalizedRows
+    processedMasks.value = maskRows
 
     progressPercentage.value = 100
     ElMessage.success(t('message.processSuccess'))
@@ -1078,18 +1037,14 @@ const handleProcessData = async () => {
 }
 
 const handlePredict = async () => {
-  if (!processedData.value.length && !fileData.value.length) {
+  // 中文注释：新模型需要 mask 通道与分位数归一化，必须先完成数据处理。
+  if (!processedData.value.length) {
     ElMessage.error(t('message.processDataFirst'))
     return
   }
 
-  const rowsForPrediction = processedData.value.length
-    ? processedData.value
-    : buildModelRowsFromTableData(fileData.value)
-
-  if (!processedData.value.length) {
-    ElMessage.info(t('message.skipProcess'))
-  }
+  const rowsForPrediction = processedData.value
+  const masksForPrediction = processedMasks.value
 
   predicting.value = true
   progressPercentage.value = 10
@@ -1119,6 +1074,7 @@ const handlePredict = async () => {
       MODEL_SEQUENCE_COLUMNS,
       {
         batchSize: 96,
+        masks: masksForPrediction,
         onProgress: ({ completed, total }) => {
           const percent = total ? completed / total : 0
           // Math.max 防止定时器已把进度推得更高时被 onProgress 倒退。
@@ -1205,6 +1161,7 @@ const copySummary = async () => {
 const goHome = () => {
   fileData.value = []
   processedData.value = []
+  processedMasks.value = []
   predictions.value = []
   coordinateData.value = []
   workspaceTab.value = 'stat'

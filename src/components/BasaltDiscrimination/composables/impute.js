@@ -1,3 +1,5 @@
+import { ARCHEAN_CRATON_PATTERNS } from '../constants'
+
 function getPublicAssetUrl(relativePath) {
   // 中文注释：静态资源地址跟随当前页面，兼容 Vite 本地预览和静态部署。
   if (typeof window === 'undefined') {
@@ -7,8 +9,8 @@ function getPublicAssetUrl(relativePath) {
   return new URL(relativePath, window.location.href).href
 }
 
-let imputationStatsPromise = null
 let knnReferencePromise = null
+let globalMissforestPromise = null
 
 function isMissingChemicalValue(value) {
   if (value === null || value === undefined || value === '') return true
@@ -18,20 +20,124 @@ function isMissingChemicalValue(value) {
   return !Number.isFinite(numericValue) || numericValue === 0
 }
 
-async function loadImputationStats() {
-  if (!imputationStatsPromise) {
-    imputationStatsPromise = fetch(getPublicAssetUrl('model/imputation_stats.json'))
+// ─── 全局轻量 MissForest 插补（现代玄武岩主路径）─────────────────────────────
+// 模型来自 data_interpolation/export_global_light_missforest_json.py，结构：
+//   { column_order:[36], scaler_mean:[36], scaler_scale:[36],
+//     imputers:[ {trees:[{l,r,f,t,v}]}, ...36... ] }
+// imputers[j] 对应 column_order[j]；其树的 f 索引指向“除 j 外其余 35 列”（column_order 去掉第 j 列）。
+
+async function loadGlobalMissforest() {
+  if (!globalMissforestPromise) {
+    globalMissforestPromise = fetch(getPublicAssetUrl('model/missforest_global.json'))
       .then(response => {
         if (!response.ok) {
-          throw new Error('imputation_stats.json 加载失败')
+          throw new Error('missforest_global.json 加载失败')
         }
 
         return response.json()
       })
   }
 
-  return imputationStatsPromise
+  return globalMissforestPromise
 }
+
+function predictTree(tree, x) {
+  let node = 0
+  // 叶节点的 left == -1；内部节点按 x[f] <= t 走左，否则走右（与 sklearn 一致）。
+  while (tree.l[node] !== -1) {
+    node = x[tree.f[node]] <= tree.t[node] ? tree.l[node] : tree.r[node]
+  }
+  return tree.v[node]
+}
+
+function predictRF(imputer, x) {
+  const trees = imputer.trees || []
+  if (!trees.length) return 0
+
+  let sum = 0
+  for (const tree of trees) {
+    sum += predictTree(tree, x)
+  }
+  return sum / trees.length
+}
+
+function imputeOneRowWithGlobalModel(row, columns, model) {
+  const { column_order, scaler_mean, scaler_scale, imputers } = model
+  const n = column_order.length
+
+  // 输入列 -> 模型列下标
+  const inputToModel = columns.map(col => column_order.indexOf(col))
+
+  // 标准化到模型空间；缺失 -> 0（= 标准化均值），并记录缺失位置（模型列序）。
+  const scaled = new Float64Array(n)
+  const missing = new Uint8Array(n)
+  missing.fill(1)
+
+  columns.forEach((col, inputIdx) => {
+    const modelIdx = inputToModel[inputIdx]
+    if (modelIdx === -1) return
+    const val = row[inputIdx]
+    if (!isMissingChemicalValue(val)) {
+      scaled[modelIdx] = (Number(val) - scaler_mean[modelIdx]) / scaler_scale[modelIdx]
+      missing[modelIdx] = 0
+    }
+  })
+
+  // 与导出脚本评估口径一致：每个缺失列独立用“原始(缺失=0)特征向量”预测，不互相传播。
+  const imputedScaled = Float64Array.from(scaled)
+  for (let j = 0; j < n; j += 1) {
+    if (!missing[j]) continue
+    const imputer = imputers[j]
+    if (!imputer || !(imputer.trees && imputer.trees.length)) continue
+
+    // 特征向量：除 j 外，按 column_order 顺序（与训练 feature_cols 对齐）。
+    const x = new Float64Array(n - 1)
+    let xi = 0
+    for (let k = 0; k < n; k += 1) {
+      if (k !== j) x[xi++] = scaled[k]
+    }
+    imputedScaled[j] = predictRF(imputer, x)
+  }
+
+  // 反标准化，仅写回缺失位置；地化含量不为负（与训练 clip(lower=0) 一致）。
+  const result = row.map(Number)
+  columns.forEach((col, inputIdx) => {
+    const modelIdx = inputToModel[inputIdx]
+    if (modelIdx === -1) return
+    if (missing[modelIdx]) {
+      const value = imputedScaled[modelIdx] * scaler_scale[modelIdx] + scaler_mean[modelIdx]
+      result[inputIdx] = value < 0 ? 0 : value
+    }
+  })
+
+  return result
+}
+
+async function imputeRowsByMissForest(rows, columns) {
+  let model
+  try {
+    model = await loadGlobalMissforest()
+  } catch (error) {
+    // 中文注释：全局 MissForest 加载失败时回退 KNN，保证功能可用。
+    console.warn('全局 MissForest 加载失败，回退 KNN：', error)
+    globalMissforestPromise = null
+    return imputeRowsByKnn(rows, columns)
+  }
+
+  const output = []
+  for (let i = 0; i < rows.length; i += 1) {
+    output.push(imputeOneRowWithGlobalModel(rows[i], columns, model))
+
+    // 中文注释：大表插补时主动让出主线程，减少“页面卡死”的感觉。
+    if (i > 0 && i % 50 === 0) {
+      await new Promise(resolve => window.setTimeout(resolve, 0))
+    }
+  }
+
+  return output
+}
+
+// ─── KNN 插补（全局 MissForest 加载失败时的兜底）─────────────────────────────
 
 async function loadKnnReference() {
   if (!knnReferencePromise) {
@@ -46,23 +152,6 @@ async function loadKnnReference() {
   }
 
   return knnReferencePromise
-}
-
-async function imputeRowsByTrainingMedian(rows, columns) {
-  const imputationStats = await loadImputationStats()
-  const stats = imputationStats.stats || {}
-
-  return rows.map(row => row.map((value, index) => {
-    const columnName = columns[index]
-    const columnStats = stats[columnName]
-    const fallbackValue = Number(columnStats?.median ?? 0)
-
-    if (isMissingChemicalValue(value)) {
-      return Number.isFinite(fallbackValue) ? fallbackValue : 0
-    }
-
-    return Number(value)
-  }))
 }
 
 function buildColumnIndexMap(columns) {
@@ -172,141 +261,7 @@ async function imputeRowsByKnn(rows, columns) {
 
     output.push(nextRow)
 
-    // 中文注释：大表插补时主动让出主线程，减少“页面卡死”的感觉。
     if (rowIndex > 0 && rowIndex % 50 === 0) {
-      await new Promise(resolve => window.setTimeout(resolve, 0))
-    }
-  }
-
-  return output
-}
-
-// ─── MissForest inference ────────────────────────────────────────────────────
-
-import { ARCHEAN_CRATON_PATTERNS, MISSFOREST_LABEL_TO_FILE } from '../constants'
-
-const missforestModelCache = {}
-
-async function loadMissforestModel(settingKey) {
-  if (missforestModelCache[settingKey]) {
-    return missforestModelCache[settingKey]
-  }
-
-  const fileName = MISSFOREST_LABEL_TO_FILE[settingKey]
-  if (!fileName) {
-    throw new Error(`没有对应的 MissForest 模型：${settingKey}`)
-  }
-
-  const url = getPublicAssetUrl(`model/missforest/${fileName}.json`)
-  const response = await fetch(url)
-  if (!response.ok) {
-    throw new Error(`MissForest 模型加载失败：${fileName}.json`)
-  }
-
-  const model = await response.json()
-  missforestModelCache[settingKey] = model
-  return model
-}
-
-function predictTree(tree, x) {
-  let node = 0
-  while (tree.l[node] !== -1) {
-    if (x[tree.f[node]] <= tree.t[node]) {
-      node = tree.l[node]
-    } else {
-      node = tree.r[node]
-    }
-  }
-  return tree.v[node]
-}
-
-function predictRF(imputer, x) {
-  let sum = 0
-  for (const tree of imputer.trees) {
-    sum += predictTree(tree, x)
-  }
-  return sum / imputer.trees.length
-}
-
-function imputeOneRowWithModel(row, columns, model, nIter = 3) {
-  const { column_order, scaler_mean, scaler_scale, imputers } = model
-  const n = column_order.length
-
-  // Build input→model index map
-  const inputToModel = new Array(columns.length).fill(-1)
-  columns.forEach((col, inputIdx) => {
-    const modelIdx = column_order.indexOf(col)
-    if (modelIdx !== -1) inputToModel[inputIdx] = modelIdx
-  })
-
-  // Scale data into model space; missing → 0 (= scaled mean)
-  const scaled = new Float64Array(n)
-  const missing = new Uint8Array(n)
-  missing.fill(1)
-
-  columns.forEach((col, inputIdx) => {
-    const modelIdx = inputToModel[inputIdx]
-    if (modelIdx === -1) return
-    const val = row[inputIdx]
-    if (!isMissingChemicalValue(val)) {
-      scaled[modelIdx] = (Number(val) - scaler_mean[modelIdx]) / scaler_scale[modelIdx]
-      missing[modelIdx] = 0
-    }
-  })
-
-  // Iterative imputation in scaled space
-  for (let iter = 0; iter < nIter; iter++) {
-    for (let j = 0; j < n; j++) {
-      if (!missing[j]) continue
-
-      // Build feature vector: all columns except j, in column_order order
-      const x = new Float64Array(n - 1)
-      let xi = 0
-      for (let k = 0; k < n; k++) {
-        if (k !== j) x[xi++] = scaled[k]
-      }
-
-      scaled[j] = predictRF(imputers[j], x)
-    }
-  }
-
-  // Inverse-scale and write back only the missing values
-  const result = row.map(Number)
-  columns.forEach((col, inputIdx) => {
-    const modelIdx = inputToModel[inputIdx]
-    if (modelIdx === -1) return
-    if (missing[modelIdx]) {
-      result[inputIdx] = scaled[modelIdx] * scaler_scale[modelIdx] + scaler_mean[modelIdx]
-    }
-  })
-
-  return result
-}
-
-async function imputeRowsByMissForest(rows, columns, settingLabels) {
-  // settingLabels: array of per-row CNN label strings (from KNN-pass prediction)
-  // Rows that map to an unknown label fall back to KNN values (passed in as-is).
-  const uniqueSettings = [...new Set(settingLabels.filter(l => l && MISSFOREST_LABEL_TO_FILE[l]))]
-
-  // Preload all needed models in parallel
-  const modelMap = {}
-  await Promise.all(
-    uniqueSettings.map(async (label) => {
-      modelMap[label] = await loadMissforestModel(label)
-    })
-  )
-
-  const output = []
-  for (let i = 0; i < rows.length; i++) {
-    const label = settingLabels[i]
-    if (label && modelMap[label]) {
-      output.push(imputeOneRowWithModel(rows[i], columns, modelMap[label]))
-    } else {
-      output.push(rows[i].map(Number))
-    }
-
-    // Yield to main thread every 50 rows to avoid jank
-    if (i > 0 && i % 50 === 0) {
       await new Promise(resolve => window.setTimeout(resolve, 0))
     }
   }
@@ -320,9 +275,8 @@ function isArcheanFilename(filename) {
 }
 
 export {
-  imputeRowsByKnn,
   imputeRowsByMissForest,
-  imputeRowsByTrainingMedian,
+  imputeRowsByKnn,
   isArcheanFilename,
   isMissingChemicalValue
 }

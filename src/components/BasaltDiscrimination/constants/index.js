@@ -30,16 +30,19 @@ export const MAJOR_ELEMENTS = [
   'K2O(WT%)', 'CAO(WT%)', 'TIO2(WT%)', 'MNO(WT%)', 'FEOT(WT%)'
 ]
 
+// 中文注释：下标 0..8 必须与模型输出 logits 的类别下标一一对应。
+// 该顺序由训练脚本 pd.factorize(df_train['TECTONIC SETTING']) 的“首次出现序”决定
+// （取自 05_normalize_basalt_train.csv），不是字母序；换模型/重训前务必核对 model_meta.json 的 label_order。
 export const TECTONIC_SETTINGS = [
-  'BACK-ARC_BASIN',
-  'Continental arc',
-  'CONTINENTAL FLOOD BASALT',
-  'CONTINENTAL_RIFT',
-  'Intra-oceanic arc',
-  'Island arc',
-  'OCEAN ISLAND',
-  'OCEANIC PLATEAU',
-  'SPREADING_CENTER'
+  'CONTINENTAL_RIFT',          // 0
+  'OCEAN ISLAND',              // 1
+  'SPREADING_CENTER',          // 2
+  'Island arc',                // 3
+  'CONTINENTAL FLOOD BASALT',  // 4
+  'OCEANIC PLATEAU',           // 5
+  'BACK-ARC_BASIN',            // 6
+  'Intra-oceanic arc',         // 7
+  'Continental arc'            // 8
 ]
 
 export const MODEL_CLASS_NAMES = TECTONIC_SETTINGS
@@ -54,19 +57,6 @@ export const TECTONIC_SETTINGS_MAP = {
   'OCEAN ISLAND': '大洋岛',
   'OCEANIC PLATEAU': '洋底高原',
   'SPREADING_CENTER': '洋中脊'
-}
-
-// Maps CNN prediction label → MissForest JSON filename (in public/model/missforest/)
-export const MISSFOREST_LABEL_TO_FILE = {
-  'BACK-ARC_BASIN': 'BACK-ARC_BASIN',
-  'Continental arc': 'Continental_arc',
-  'CONTINENTAL FLOOD BASALT': 'CONTINENTAL_FLOOD_BASALT',
-  'CONTINENTAL_RIFT': 'CONTINENTAL_RIFT',
-  'Intra-oceanic arc': 'Intra-oceanic_arc',
-  'Island arc': 'Island_arc',
-  'OCEAN ISLAND': 'OCEAN_ISLAND',
-  'OCEANIC PLATEAU': 'OCEANIC_PLATEAU',
-  'SPREADING_CENTER': 'SPREADING_CENTER'
 }
 
 // Regex patterns for detecting Archean/craton filenames.

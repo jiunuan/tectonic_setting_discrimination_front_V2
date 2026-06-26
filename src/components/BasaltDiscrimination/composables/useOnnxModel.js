@@ -35,30 +35,42 @@ function softmax(logits) {
   return expValues.map(value => value / sum)
 }
 
-function buildInputTensors(rows, columns, sequenceColumns) {
+function buildInputTensors(rows, masks, columns, sequenceColumns) {
+  // 中文注释：GeoDAN 显式缺失编码——矩阵分支和序列分支都用“值 + 缺失mask”两路输入。
+  // masks 与 rows 同序（COLUMNS_TO_EXTRACT1 列序），元素 1=原始缺失，0=实测。
   const columnIndexMap = new Map(columns.map((name, index) => [name, index]))
   const batchSize = rows.length
   const featureCount = COLUMNS_TO_EXTRACT1.length
+  const seqLen = sequenceColumns.length
 
-  const imageBuffer = new Float32Array(batchSize * featureCount)
-  const sequenceBuffer = new Float32Array(batchSize * sequenceColumns.length)
+  // 矩阵分支：2 通道 [B,2,6,6]——通道0=分位数值/255，通道1=缺失mask
+  const imageBuffer = new Float32Array(batchSize * 2 * featureCount)
+  // 序列分支：每元素 2 特征 [B,36,2]——特征0=值/255，特征1=mask
+  const sequenceBuffer = new Float32Array(batchSize * seqLen * 2)
 
   rows.forEach((row, rowIndex) => {
+    const maskRow = masks?.[rowIndex]
+    const imgBase = rowIndex * 2 * featureCount
     for (let columnIndex = 0; columnIndex < featureCount; columnIndex += 1) {
       const value = Number(row[columnIndex]) || 0
-      imageBuffer[rowIndex * featureCount + columnIndex] = value / 255
+      const mask = maskRow && Number(maskRow[columnIndex]) ? 1 : 0
+      imageBuffer[imgBase + columnIndex] = value / 255              // 通道0：值
+      imageBuffer[imgBase + featureCount + columnIndex] = mask      // 通道1：mask
     }
 
+    const seqBase = rowIndex * seqLen * 2
     sequenceColumns.forEach((columnName, sequenceIndex) => {
       const sourceIndex = columnIndexMap.get(columnName)
       const value = sourceIndex === undefined ? 0 : Number(row[sourceIndex]) || 0
-      sequenceBuffer[rowIndex * sequenceColumns.length + sequenceIndex] = value / 255
+      const mask = sourceIndex !== undefined && maskRow && Number(maskRow[sourceIndex]) ? 1 : 0
+      sequenceBuffer[seqBase + sequenceIndex * 2] = value / 255     // 特征0：值
+      sequenceBuffer[seqBase + sequenceIndex * 2 + 1] = mask        // 特征1：mask
     })
   })
 
   return {
-    imageTensor: new ort.Tensor('float32', imageBuffer, [batchSize, 1, 6, 6]),
-    sequenceTensor: new ort.Tensor('float32', sequenceBuffer, [batchSize, sequenceColumns.length, 1])
+    imageTensor: new ort.Tensor('float32', imageBuffer, [batchSize, 2, 6, 6]),
+    sequenceTensor: new ort.Tensor('float32', sequenceBuffer, [batchSize, seqLen, 2])
   }
 }
 
@@ -108,6 +120,8 @@ async function predictRows(rows, columns = COLUMNS_TO_EXTRACT1, sequenceColumns 
 
   const batchSize = options.batchSize || DEFAULT_BATCH_SIZE
   const onProgress = typeof options.onProgress === 'function' ? options.onProgress : null
+  // 中文注释：masks 与 rows 一一对应（同为 COLUMNS_TO_EXTRACT1 列序）；缺省则全部按实测处理。
+  const masks = Array.isArray(options.masks) ? options.masks : null
   const inputNames = currentSession.inputNames || []
 
   if (inputNames.length < 2) {
@@ -118,7 +132,8 @@ async function predictRows(rows, columns = COLUMNS_TO_EXTRACT1, sequenceColumns 
 
   for (let batchStart = 0; batchStart < rows.length; batchStart += batchSize) {
     const batchRows = rows.slice(batchStart, batchStart + batchSize)
-    const { imageTensor, sequenceTensor } = buildInputTensors(batchRows, columns, sequenceColumns)
+    const batchMasks = masks ? masks.slice(batchStart, batchStart + batchSize) : null
+    const { imageTensor, sequenceTensor } = buildInputTensors(batchRows, batchMasks, columns, sequenceColumns)
     const feeds = {}
     feeds[inputNames[0]] = imageTensor
     feeds[inputNames[1]] = sequenceTensor
