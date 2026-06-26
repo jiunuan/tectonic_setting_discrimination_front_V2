@@ -303,6 +303,6 @@ export default {
     'Island arc': 'Island arc',
     'OCEAN ISLAND': 'Ocean island',
     'OCEANIC PLATEAU': 'Oceanic plateau',
-    'SPREADING_CENTER': 'Spreading center'
+    'SPREADING_CENTER': 'Mid-ocean ridge'
   }
 }
